@@ -1,3 +1,12 @@
+=== Zotpress Static Bibliography ===
+Contributors: nytafar
+Plugin Name: Zotpress Static Bibliography
+Plugin URI: http://jellum.net/plugins/
+Tags: zotero, zotpress, citation manager, citations, citation, cite, citing, bibliography, bibliographies, reference, referencing, references, reference list, reference manager, academic, academic blogging, academia, scholar, scholarly, scholarly blogging
+Author URI: https://github.com/nytafar/zotpress-static-bibliography/
+Author: Lasse Jellum
+License: Apache2.0
+
 # Zotpress Static Bibliography
 
 ```
@@ -14,6 +23,10 @@ An enhancement plugin for Zotpress that implements server-side rendering of bibl
 ## Overview
 
 Zotpress Static Bibliography fundamentally improves how citations are rendered by moving from client-side JavaScript to server-side PHP. This architectural shift brings significant benefits to Core Web Vitals and overall performance:
+
+### Caveats
+
+This initial version only modifies certain shortcodes in a way that I required for my own projects. It is not a complete implementation and may not work for everyone. Feel free to fork, modify and post PRs. With enough interest, I may continue to develop this plugin. Ultimately, server-side, jquery-free rendering would be a great native feature of zotpress itself.
 
 ### Immediate Benefits
 - **Zero Layout Shift**: Eliminates Cumulative Layout Shift (CLS) through server-side rendering
@@ -395,7 +408,8 @@ This project is licensed under the GPL v2 or later - see the LICENSE file for de
 
 ## Acknowledgments
 
-- Original Zotpress plugin developers
+- Katie Seaborn for developing Zotpress
+- AI for generating excessive and over the top documentation
 - WordPress community
 - Zotero team
 
