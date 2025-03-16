@@ -197,9 +197,9 @@ function ZotpressStatic_zotpressInText ($atts)
             );
         }
         
-        // Include request class and functions
-        include_once(dirname(__FILE__) . '/../request/request.class.php');
-        include_once(dirname(__FILE__) . '/../request/request.functions.php');
+        // Include request class and functions from original Zotpress plugin
+        include_once(WP_PLUGIN_DIR . '/zotpress/lib/request/request.class.php');
+        include_once(WP_PLUGIN_DIR . '/zotpress/lib/request/request.functions.php');
         
         // Build citation output
         $output = '';

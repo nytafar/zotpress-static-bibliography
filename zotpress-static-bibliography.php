@@ -10,12 +10,63 @@
  * License URI: http://www.gnu.org/licenses/gpl-2.0.txt
  * Text Domain: zotpress-static-bibliography
  * Domain Path: /languages
+ * Requires at least: 5.0
+ * Requires PHP: 7.2
+ * Depends: Zotpress
  */
 
 // If this file is called directly, abort.
 if (!defined('WPINC')) {
     die;
 }
+
+/**
+ * Check if Zotpress is active and required files exist
+ */
+function zotpress_static_bibliography_check_dependencies() {
+    if (!function_exists('is_plugin_active')) {
+        include_once(ABSPATH . 'wp-admin/includes/plugin.php');
+    }
+
+    $dependency_errors = array();
+
+    // Check if Zotpress is installed and active
+    if (!is_plugin_active('zotpress/zotpress.php')) {
+        $dependency_errors[] = __('Zotpress plugin must be installed and activated.', 'zotpress-static-bibliography');
+    }
+
+    // Check if required Zotpress files exist
+    $required_files = array(
+        '/zotpress/lib/request/request.class.php' => 'Zotpress request class file',
+        '/zotpress/lib/request/request.functions.php' => 'Zotpress request functions file'
+    );
+
+    foreach ($required_files as $file => $name) {
+        if (!file_exists(WP_PLUGIN_DIR . $file)) {
+            $dependency_errors[] = sprintf(
+                __('Required file "%s" is missing from Zotpress plugin.', 'zotpress-static-bibliography'),
+                $name
+            );
+        }
+    }
+
+    return $dependency_errors;
+}
+
+/**
+ * Display admin notices for dependency errors
+ */
+function zotpress_static_bibliography_admin_notices() {
+    $errors = zotpress_static_bibliography_check_dependencies();
+    
+    if (!empty($errors)) {
+        echo '<div class="error"><p>';
+        echo '<strong>' . __('Zotpress Static Bibliography Error:', 'zotpress-static-bibliography') . '</strong><br>';
+        echo implode('<br>', $errors);
+        echo '</p></div>';
+    }
+}
+add_action('admin_notices', 'zotpress_static_bibliography_admin_notices');
 
 /**
  * The core plugin class.
@@ -35,17 +86,25 @@ class Zotpress_Static_Bibliography {
     public function __construct() {
         $this->plugin_dir = plugin_dir_path(__FILE__);
         
-        // Check if Zotpress is active
-        add_action('plugins_loaded', array($this, 'check_zotpress_dependency'));
-        
-        // Hook into Zotpress shortcodes
+        // Only initialize if dependencies are met
+        if (empty(zotpress_static_bibliography_check_dependencies())) {
+            $this->init();
+        }
+    }
+
+    /**
+     * Initialize plugin functionality
+     */
+    private function init() {
+        // Load plugin files
+        require_once($this->plugin_dir . 'lib/utils.php');
+        require_once($this->plugin_dir . 'lib/shortcode/shortcode.intext.php');
+        require_once($this->plugin_dir . 'lib/shortcode/shortcode.intextbib.php');
+
+        // Hook into WordPress at priority 20 to run after Zotpress
+        add_action('init', array($this, 'remove_original_shortcodes'), 20);
         add_action('init', array($this, 'register_shortcodes'), 20);
-        
-        // Remove Zotpress JavaScript for bibliography
-        add_action('wp_enqueue_scripts', array($this, 'remove_zotpress_js'), 100);
-        
-        // Add our own files
-        add_action('plugins_loaded', array($this, 'load_custom_files'), 30);
+        add_action('wp_enqueue_scripts', array($this, 'deregister_scripts'), 20);
     }
 
     /**
@@ -108,6 +167,28 @@ class Zotpress_Static_Bibliography {
         
         // Remove the action that conditionally loads the scripts
         remove_action('wp_footer', 'Zotpress_theme_conditional_scripts_footer');
+    }
+
+    /**
+     * Remove original Zotpress shortcodes.
+     */
+    public function remove_original_shortcodes() {
+        remove_shortcode('zotpressInTextBib');
+        remove_shortcode('zotpressInText');
+    }
+
+    /**
+     * Deregister Zotpress scripts.
+     */
+    public function deregister_scripts() {
+        wp_dequeue_script('zotpress-bibliography-js');
+        wp_deregister_script('zotpress-bibliography-js');
+        
+        wp_dequeue_script('zotpress-intextbib-js');
+        wp_deregister_script('zotpress-intextbib-js');
+        
+        wp_dequeue_script('zotpress-intext-js');
+        wp_deregister_script('zotpress-intext-js');
     }
 }
 
