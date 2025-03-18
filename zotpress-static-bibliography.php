@@ -1,18 +1,15 @@
 <?php
 /**
  * Plugin Name: Zotpress Static Bibliography
- * Plugin URI: https://example.com/zotpress-static-bibliography
+ * Plugin URI: https://jellum.net/zotpress-static-bibliography
  * Description: Enhances Zotpress to render bibliography citations statically through PHP.
- * Version: 1.0.0
- * Author: Your Name
- * Author URI: https://example.com
+ * Version: 1.0.1
+ * Author: Lasse Jellum
+ * Author URI: https://jellum.net
  * License: GPL-2.0+
  * License URI: http://www.gnu.org/licenses/gpl-2.0.txt
  * Text Domain: zotpress-static-bibliography
  * Domain Path: /languages
- * Requires at least: 5.0
- * Requires PHP: 7.2
- * Depends: Zotpress
  */
 
 // If this file is called directly, abort.
@@ -20,53 +17,18 @@ if (!defined('WPINC')) {
     die;
 }
 
-/**
- * Check if Zotpress is active and required files exist
- */
-function zotpress_static_bibliography_check_dependencies() {
-    if (!function_exists('is_plugin_active')) {
-        include_once(ABSPATH . 'wp-admin/includes/plugin.php');
-    }
-
-    $dependency_errors = array();
-
-    // Check if Zotpress is installed and active
-    if (!is_plugin_active('zotpress/zotpress.php')) {
-        $dependency_errors[] = __('Zotpress plugin must be installed and activated.', 'zotpress-static-bibliography');
-    }
-
-    // Check if required Zotpress files exist
-    $required_files = array(
-        '/zotpress/lib/request/request.class.php' => 'Zotpress request class file',
-        '/zotpress/lib/request/request.functions.php' => 'Zotpress request functions file'
-    );
-
-    foreach ($required_files as $file => $name) {
-        if (!file_exists(WP_PLUGIN_DIR . $file)) {
-            $dependency_errors[] = sprintf(
-                __('Required file "%s" is missing from Zotpress plugin.', 'zotpress-static-bibliography'),
-                $name
-            );
+// Define a debug function
+if (!function_exists('zpstatic_debug_log')) {
+    function zpstatic_debug_log($message) {
+        if (defined('WP_DEBUG') && WP_DEBUG === true) {
+            if (is_array($message) || is_object($message)) {
+                error_log('ZPSTATIC DEBUG: ' . print_r($message, true));
+            } else {
+                error_log('ZPSTATIC DEBUG: ' . $message);
+            }
         }
     }
-
-    return $dependency_errors;
 }
-
-/**
- * Display admin notices for dependency errors
- */
-function zotpress_static_bibliography_admin_notices() {
-    $errors = zotpress_static_bibliography_check_dependencies();
-    
-    if (!empty($errors)) {
-        echo '<div class="error"><p>';
-        echo '<strong>' . __('Zotpress Static Bibliography Error:', 'zotpress-static-bibliography') . '</strong><br>';
-        echo implode('<br>', $errors);
-        echo '</p></div>';
-    }
-}
-add_action('admin_notices', 'zotpress_static_bibliography_admin_notices');
 
 /**
  * The core plugin class.
@@ -86,34 +48,46 @@ class Zotpress_Static_Bibliography {
     public function __construct() {
         $this->plugin_dir = plugin_dir_path(__FILE__);
         
-        // Only initialize if dependencies are met
-        if (empty(zotpress_static_bibliography_check_dependencies())) {
-            $this->init();
-        }
-    }
-
-    /**
-     * Initialize plugin functionality
-     */
-    private function init() {
-        // Load plugin files
-        require_once($this->plugin_dir . 'lib/utils.php');
-        require_once($this->plugin_dir . 'lib/shortcode/shortcode.intext.php');
-        require_once($this->plugin_dir . 'lib/shortcode/shortcode.intextbib.php');
-
-        // Hook into WordPress at priority 20 to run after Zotpress
-        add_action('init', array($this, 'remove_original_shortcodes'), 20);
-        add_action('init', array($this, 'register_shortcodes'), 20);
-        add_action('wp_enqueue_scripts', array($this, 'deregister_scripts'), 20);
+        zpstatic_debug_log('Plugin initialized');
+        
+        // Load required files early
+        $this->load_custom_files();
+        
+        // Check if Zotpress is active - use a lower priority to ensure Zotpress is fully loaded
+        add_action('plugins_loaded', array($this, 'check_zotpress_dependency'), 20);
+        
+        // Hook into 'wp' action to ensure all WordPress data is loaded
+        add_action('wp', array($this, 'setup_shortcodes'));
+        
+        // Add a hook to check shortcode globals
+        add_action('wp_head', array($this, 'check_globals'), 1);
+        
+        // Remove Zotpress JavaScript for bibliography
+        add_action('wp_enqueue_scripts', array($this, 'remove_zotpress_js'), 100);
+        
+        // Add Zotpress button to the Block Editor toolbar
+        add_action('enqueue_block_editor_assets', array($this, 'register_editor_button'));
     }
 
     /**
      * Check if Zotpress is active.
      */
     public function check_zotpress_dependency() {
+        zpstatic_debug_log('Checking Zotpress dependency');
+        
+        // Check for critical Zotpress functions
+        $zotpress_functions = array(
+            'Zotpress_shortcode_request' => function_exists('Zotpress_shortcode_request'),
+            'Zotpress_prep_ajax_request_vars' => function_exists('Zotpress_prep_ajax_request_vars')
+        );
+        
+        zpstatic_debug_log('Zotpress functions available: ' . json_encode($zotpress_functions));
+        
         if (!function_exists('Zotpress_shortcode_request')) {
             add_action('admin_notices', array($this, 'zotpress_missing_notice'));
+            return false;
         }
+        return true;
     }
 
     /**
@@ -131,18 +105,76 @@ class Zotpress_Static_Bibliography {
      * Load our custom files before Zotpress loads its files.
      */
     public function load_custom_files() {
+        zpstatic_debug_log('Loading custom files');
+        
         // Include our enhanced files
+        require_once($this->plugin_dir . 'lib/utils.php');
         require_once($this->plugin_dir . 'lib/shortcode/shortcode.intextbib.php');
         require_once($this->plugin_dir . 'lib/shortcode/shortcode.intext.php');
+    }
+
+    /**
+     * Setup shortcodes after WordPress is fully loaded.
+     * This ensures that all required Zotpress functions are available.
+     */
+    public function setup_shortcodes() {
+        zpstatic_debug_log('Setting up shortcodes');
+        
+        // Only proceed if Zotpress is active
+        if (!function_exists('Zotpress_shortcode_request')) {
+            zpstatic_debug_log('Zotpress_shortcode_request function not available');
+            return;
+        }
+        
+        // Remove original shortcodes
+        $this->remove_original_shortcodes();
+        
+        // Register our custom shortcodes
+        $this->register_shortcodes();
+        
+        zpstatic_debug_log('Shortcodes setup complete');
+    }
+
+    /**
+     * Check if the global variables needed by the shortcode are available
+     */
+    public function check_globals() {
+        global $post;
+        
+        zpstatic_debug_log('Checking globals');
+        
+        if (!isset($post) || empty($post)) {
+            zpstatic_debug_log('$post global not available');
+        } else {
+            zpstatic_debug_log('$post global available with ID: ' . $post->ID);
+        }
+        
+        if (!isset($GLOBALS['zp_shortcode_instances'])) {
+            zpstatic_debug_log('$GLOBALS[\'zp_shortcode_instances\'] not available');
+        } else {
+            if (isset($post) && isset($GLOBALS['zp_shortcode_instances'][$post->ID])) {
+                zpstatic_debug_log('$GLOBALS[\'zp_shortcode_instances\'][$post->ID] available with ' . count($GLOBALS['zp_shortcode_instances'][$post->ID]) . ' instances');
+            } else {
+                zpstatic_debug_log('$GLOBALS[\'zp_shortcode_instances\'][$post->ID] not available');
+            }
+        }
+    }
+
+    /**
+     * Remove original Zotpress shortcodes.
+     */
+    public function remove_original_shortcodes() {
+        zpstatic_debug_log('Removing original shortcodes');
+        
+        remove_shortcode('zotpressInTextBib');
+        remove_shortcode('zotpressInText');
     }
 
     /**
      * Register our custom shortcode handlers.
      */
     public function register_shortcodes() {
-        // Remove the original shortcodes
-        remove_shortcode('zotpressInTextBib');
-        remove_shortcode('zotpressInText');
+        zpstatic_debug_log('Registering custom shortcodes');
         
         // Add our enhanced shortcodes
         add_shortcode('zotpressInTextBib', 'ZotpressStatic_zotpressInTextBib');
@@ -153,42 +185,38 @@ class Zotpress_Static_Bibliography {
      * Remove Zotpress JavaScript for bibliography to prevent the loading spinner.
      */
     public function remove_zotpress_js() {
-        // Dequeue and deregister the Zotpress bibliography scripts
-        wp_dequeue_script('zotpress-bibliography-js');
-        wp_deregister_script('zotpress-bibliography-js');
+        zpstatic_debug_log('Checking if shortcode is displayed');
         
-        // Dequeue and deregister the Zotpress in-text bibliography scripts
-        wp_dequeue_script('zotpress-intextbib-js');
-        wp_deregister_script('zotpress-intextbib-js');
-        
-        // Dequeue and deregister the Zotpress in-text citation scripts
-        wp_dequeue_script('zotpress-intext-js');
-        wp_deregister_script('zotpress-intext-js');
-        
-        // Remove the action that conditionally loads the scripts
-        remove_action('wp_footer', 'Zotpress_theme_conditional_scripts_footer');
+        // Only dequeue if our shortcode is used
+        if (isset($GLOBALS['zp_is_shortcode_displayed']) && $GLOBALS['zp_is_shortcode_displayed'] === true) {
+            zpstatic_debug_log('Dequeuing Zotpress scripts');
+            wp_dequeue_script('zotpress');
+        }
     }
-
+    
     /**
-     * Remove original Zotpress shortcodes.
+     * Register and enqueue the Zotpress editor button script.
+     * This adds a dedicated Zotpress button to the Block Editor toolbar.
      */
-    public function remove_original_shortcodes() {
-        remove_shortcode('zotpressInTextBib');
-        remove_shortcode('zotpressInText');
-    }
-
-    /**
-     * Deregister Zotpress scripts.
-     */
-    public function deregister_scripts() {
-        wp_dequeue_script('zotpress-bibliography-js');
-        wp_deregister_script('zotpress-bibliography-js');
+    public function register_editor_button() {
+        // Only proceed if Zotpress is active
+        if (!function_exists('Zotpress_shortcode_request')) {
+            return;
+        }
         
-        wp_dequeue_script('zotpress-intextbib-js');
-        wp_deregister_script('zotpress-intextbib-js');
+        // Enqueue the script for the Block Editor
+        wp_enqueue_script(
+            'zotpress-editor-button',
+            plugin_dir_url(__FILE__) . 'assets/js/zotpress-editor-button.js',
+            array('wp-blocks', 'wp-rich-text', 'wp-element', 'wp-editor', 'wp-components', 'wp-i18n'),
+            '1.0.0',
+            true
+        );
         
-        wp_dequeue_script('zotpress-intext-js');
-        wp_deregister_script('zotpress-intext-js');
+        // Add translations
+        if (function_exists('wp_set_script_translations')) {
+            wp_set_script_translations('zotpress-editor-button', 'zotpress-static-bibliography');
+        }
     }
 }
 

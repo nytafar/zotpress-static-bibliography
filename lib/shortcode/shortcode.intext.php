@@ -131,9 +131,10 @@ function ZotpressStatic_zotpressInText ($atts)
     // Replace ndashes and mdashes with dashes
     $items = str_replace("–", "-", str_replace("–", "-", $items));
     
-    // Remove pages from item key/s
+    // Remove pages from item key/s - IMPROVED REGEX PATTERNS
     $items = preg_replace("/(((,))+([\w\d-]+(})+))++/", "}", $items);
-    $items = preg_replace("/,\([\w\d-]+,+[\w\d-]+\)}/", "}", $items);
+    $items = preg_replace("/,\([\w\d-]+,*[\w\d-]*\)}/", "}", $items); // Modified to handle optional commas
+    $items = preg_replace("/\([\w\d-]+,*[\w\d-]*\)}/", "}", $items);  // Added to catch cases without leading comma
     unset($temp_items);
     
     // Generate instance id for shortcode
@@ -175,6 +176,10 @@ function ZotpressStatic_zotpressInText ($atts)
         
         foreach ($intext_citation_split as $id => $item) {
             $item_parts = explode(":", $item);
+            if (count($item_parts) < 2) {
+                // Skip malformed items
+                continue;
+            }
             $api_user_id = str_replace("{", "", $item_parts[0]);
             $item_key = str_replace("}", "", $item_parts[1]);
             
@@ -182,11 +187,13 @@ function ZotpressStatic_zotpressInText ($atts)
             $item_pages = false;
             if ($all_page_instances_str != "np") {
                 $pages_array = explode("--", $all_page_instances_str);
-                $item_pages = $pages_array[$id];
-                if ($item_pages == "np") {
-                    $item_pages = false;
-                } else {
-                    $item_pages = str_replace("++", ", ", $item_pages);
+                if (isset($pages_array[$id])) {
+                    $item_pages = $pages_array[$id];
+                    if ($item_pages == "np") {
+                        $item_pages = false;
+                    } else {
+                        $item_pages = str_replace("++", ", ", $item_pages);
+                    }
                 }
             }
             
