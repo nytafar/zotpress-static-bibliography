@@ -216,7 +216,7 @@ function zpStatic_sort_bibliography_by_citation($bibContent, $citation_keys_orde
                     // Store the entry with its citation key
                     $bibEntries[] = array(
                         'key' => $citationKey,
-                        'html' => $dom->saveHTML($entry),
+                        'dom_node' => $entry,
                         'order' => isset($citation_keys_order[$citationKey]) ? $citation_keys_order[$citationKey] : 999
                     );
                 }
@@ -229,13 +229,61 @@ function zpStatic_sort_bibliography_by_citation($bibContent, $citation_keys_orde
         return $a['order'] - $b['order'];
     });
     
-    // Rebuild the bibliography HTML
-    $sortedHTML = '';
+    // Create a new document for the numbered bibliography
+    $newDom = new DOMDocument();
+    $newDom->formatOutput = true;
+    
+    // Create a container for the bibliography
+    $container = $newDom->createElement('div');
+    $container->setAttribute('class', 'zp-Bibliography-Numbered');
+    $newDom->appendChild($container);
+    
+    // Add each entry with its number
+    $counter = 1;
     foreach ($bibEntries as $entry) {
-        $sortedHTML .= $entry['html'];
+        // Import the node to the new document
+        $importedNode = $newDom->importNode($entry['dom_node'], true);
+        
+        // Get the citation number from the order (if it exists in the citation_keys_order)
+        $citationNumber = isset($citation_keys_order[$entry['key']]) ? $citation_keys_order[$entry['key']] : $counter;
+        
+        // Create a number element
+        $numberSpan = $newDom->createElement('span', $citationNumber . '.');
+        $numberSpan->setAttribute('class', 'zp-Entry-Number');
+        
+        // Add the number to the beginning of the entry
+        if ($importedNode->hasChildNodes()) {
+            $firstChild = $importedNode->firstChild;
+            $importedNode->insertBefore($numberSpan, $firstChild);
+        } else {
+            $importedNode->appendChild($numberSpan);
+        }
+        
+        // Add the entry to the container
+        $container->appendChild($importedNode);
+        $counter++;
     }
     
-    return $sortedHTML;
+    // Get the HTML of the numbered bibliography
+    $numberedHTML = $newDom->saveHTML($container);
+    
+    // Add CSS for the numbered entries
+    $css = '<style>
+        .zp-Bibliography-Numbered .zp-Entry {
+            position: relative;
+            padding-left: 2em;
+            margin-bottom: 1em;
+        }
+        .zp-Bibliography-Numbered .zp-Entry-Number {
+            position: absolute;
+            left: 0;
+            font-weight: bold;
+            min-width: 1.5em;
+            text-align: right;
+        }
+    </style>';
+    
+    return $css . $numberedHTML;
 }
 
 ?>
