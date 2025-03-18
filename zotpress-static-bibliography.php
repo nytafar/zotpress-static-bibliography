@@ -98,8 +98,13 @@ class Zotpress_Static_Bibliography {
     private function init() {
         // Load plugin files
         require_once($this->plugin_dir . 'lib/utils.php');
+        require_once($this->plugin_dir . 'lib/shortcode/shortcode.static.functions.php'); // Include the static functions file
         require_once($this->plugin_dir . 'lib/shortcode/shortcode.intext.php');
         require_once($this->plugin_dir . 'lib/shortcode/shortcode.intextbib.php');
+        require_once($this->plugin_dir . 'lib/shortcode/shortcode.php');
+        require_once($this->plugin_dir . 'lib/shortcode/shortcode.request.php');
+        require_once($this->plugin_dir . 'lib/shortcode/shortcode.class.lib.php');
+        require_once($this->plugin_dir . 'lib/cache.php');
 
         // Hook into WordPress at priority 20 to run after Zotpress
         add_action('init', array($this, 'remove_original_shortcodes'), 20);
@@ -143,10 +148,14 @@ class Zotpress_Static_Bibliography {
         // Remove the original shortcodes
         remove_shortcode('zotpressInTextBib');
         remove_shortcode('zotpressInText');
+        remove_shortcode('zotpress');
+        remove_shortcode('zotpressLib');
         
         // Add our enhanced shortcodes
         add_shortcode('zotpressInTextBib', 'ZotpressStatic_zotpressInTextBib');
         add_shortcode('zotpressInText', 'ZotpressStatic_zotpressInText');
+        add_shortcode('zotpress', 'Zotpress_Static_Bibliography_func');
+        add_shortcode('zotpressLib', 'Zotpress_Static_Bibliography_zotpressLib');
     }
     
     /**
@@ -175,6 +184,8 @@ class Zotpress_Static_Bibliography {
     public function remove_original_shortcodes() {
         remove_shortcode('zotpressInTextBib');
         remove_shortcode('zotpressInText');
+        remove_shortcode('zotpress');
+        remove_shortcode('zotpressLib');
     }
 
     /**
